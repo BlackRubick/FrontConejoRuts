@@ -7,12 +7,15 @@ import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ChatScreen from '../screens/ChatScreen';
 import LoginReg from '../screens/LoginReg';
+import ListUsers from '../screens/ListUsers';
+import { User } from '../models/User';
 
 export type RootStackParamList = {
   LoginReg: undefined;
   Login: undefined;
   Register: undefined;
-  Chat: undefined;
+  Chat: {user:User};
+  List: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -45,6 +48,13 @@ const AppNavigator: React.FC = () => {
       options={({ navigation }) => ({
         headerShown: false, // Oculta el encabezado de navegación
       })}/>
+      <Stack.Screen
+      name = "List"
+      component={ListUsers}
+      options={({ navigation }) => ({
+        headerShown: false, // Oculta el encabezado de navegación
+      })}
+      />
     </Stack.Navigator>
   );
 };

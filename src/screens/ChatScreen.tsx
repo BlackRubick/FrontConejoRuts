@@ -4,16 +4,73 @@ import * as ImagePicker from 'expo-image-picker'; // Para seleccionar imágenes 
 import * as DocumentPicker from 'expo-document-picker'; // Para seleccionar archivos de audio
 import { Audio } from 'expo-av'; // Para reproducir audio
 import tw from '../styles/tailwind';
+import Play from '../../assets/playIcon.svg';
+import { User, ChatScreenRouteProp } from '../models/User';
+import { StackScreenProps } from '@react-navigation/stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
+import Back from '../../assets/arrowBack.svg'; 
+import { collection, addDoc, query, orderBy, onSnapshot, getFirestore, where, or } from 'firebase/firestore';
 
-const ChatScreen: React.FC = () => {
+type ChatScreenProps = StackScreenProps<RootStackParamList, 'Chat'>;
+
+interface Message {
+  content: string;
+  type: 'text' | 'image' | 'audio';
+  senderEmail: string;
+  receiverEmail: string;
+  participants: string[];
+  chatId: string;
+  timestamp: number;
+}
+
+const ChatScreen: React.FC<ChatScreenProps> = ({ route }) => {
+  const {user, chatId, userEmail} = route.params
   const [messages, setMessages] = React.useState<{ content: string | null; type: 'text' | 'image' | 'audio'; sentByUser: boolean }[]>([]);
   const [inputText, setInputText] = React.useState<string>('');
 
-  const handleSendTextMessage = () => {
+  const handleSendTextMessage = async () => {
     if (inputText.trim() !== '') {
-      setMessages([...messages, { content: inputText, type: 'text', sentByUser: true }]);
+      await sendMessage(inputText, 'text', userEmail, user.email);
       setInputText('');
     }
+  };
+
+  const sendMessage = async (content: string, type: 'text' | 'image' | 'audio', senderEmail: string, receiverEmail: string) => {
+    const db = getFirestore();
+    const messagesCollection = collection(db, 'messages');
+
+    const newMessage = {
+      content,
+      type,
+      senderEmail,
+      receiverEmail,
+      participants: [senderEmail, receiverEmail],
+      chatId: chatId,
+      timestamp: Date.now(),
+    };
+
+    await addDoc(messagesCollection, newMessage);
+  };
+
+  const loadMessages = () => {
+    const db = getFirestore();
+    const messagesCollection = collection(db, 'messages');
+
+    const q = query(
+      messagesCollection,
+      where('participants', 'array-contains', userEmail),
+      orderBy('timestamp', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const loadedMessages: Message[] = [];
+      querySnapshot.forEach((doc) => {
+        loadedMessages.push(doc.data() as Message);
+      });
+      setMessages(loadedMessages);
+    });
+
+    return unsubscribe;
   };
 
   const handleSendImage = async () => {
@@ -35,24 +92,56 @@ const ChatScreen: React.FC = () => {
   const playAudio = async (uri: string | null) => {
     if (!uri) return;
     try {
+      console.log('Reproduciendo audio:', uri);
       const sound = new Audio.Sound();
       await sound.loadAsync({ uri });
       await sound.playAsync();
+      console.log(sound.setProgressUpdateIntervalAsync)
     } catch (error) {
       console.error('Error al reproducir el audio:', error);
     }
   };
 
+React.useEffect(() => {
+  const db = getFirestore();
+  const messagesCollection = collection(db, 'messages');
+
+  const q = query(
+    messagesCollection,
+    where('chatId', '==', chatId), // Asegúrate de reemplazar 'yourChatId' con el ID de chat actual
+    orderBy('timestamp', 'asc')
+  );
+
+  const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const loadedMessages: { content: string | null; type: 'text' | 'image' | 'audio'; sentByUser: boolean, senderEmail: string | null }[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      loadedMessages.push({
+        content: data.content,
+        type: data.type,
+        sentByUser: data.senderEmail === userEmail,
+        senderEmail: data.senderEmail,
+      });
+    });
+    setMessages(loadedMessages);
+  });
+
+  return unsubscribe;
+}, [userEmail, user.email, chatId]); // Asegúrate de agregar 'yourChatId' a la lista de dependencias
+
   const renderMessageContent = (message: { content: string | null; type: 'text' | 'image' | 'audio'; sentByUser: boolean }) => {
+    const isSentByCurrentUser = message.senderEmail === user.email;
+    // Asume que tienes una variable currentUserId que contiene el ID del usuario actual
+
     switch (message.type) {
       case 'text':
         return <Text style={tw`p-3 text-white`}>{message.content}</Text>;
       case 'image':
-        return <Image source={{ uri: message.content }} style={{ width: 200, height: 200 }} />;
+        return <Image source={{ uri: message.content || undefined }} style={{ width: 200, height: 200 }} />;
       case 'audio':
         return (
-          <TouchableOpacity onPress={() => playAudio(message.content)} style={tw`bg-gray-300 p-3 rounded-lg`}>
-            <Text style={tw`text-white`}>Reproducir audio</Text>
+          <TouchableOpacity onPress={() => playAudio(message.content)} style={tw`p-3 rounded-lg`}>
+            <Play/>
           </TouchableOpacity>
         );
       default:
@@ -62,10 +151,16 @@ const ChatScreen: React.FC = () => {
 
   return (
     <View style={tw`flex-1 bg-customBackground`}>
+      <View style={tw`h-16 w-full mt-8 flex justify-center items-center flex-row`}>
+        <Back width={30} height={30}></Back>
+        <Text style={tw`m-auto text-[15px] text-textGris`}>Chat with {user.name}</Text>
+      </View>
+      <View style={tw`flex-1 w-full`}>
       <FlatList
+      style={tw`flex-1`}
         data={messages}
         renderItem={({ item }) => (
-          <View style={[tw`m-2 rounded-lg`, item.sentByUser ? tw`bg-customButton` : tw`bg-gray-200`]}>
+          <View style={[tw`m-2 max-w-52 text-black`, item.sentByUser ? tw`bg-customButton ml-auto rounded-tr-2xl rounded-bl-2xl rounded-tl-2xl` : tw`bg-gray-200 mr-auto rounded-tr-2xl rounded-br-2xl rounded-tl-2xl`]}>
             {renderMessageContent(item)}
           </View>
         )}
@@ -90,6 +185,7 @@ const ChatScreen: React.FC = () => {
         <TouchableOpacity onPress={handleSendTextMessage} style={tw`ml-2 p-2 bg-customButton rounded-full`}>
           <Text style={tw`text-white font-bold`}>Enviar Texto</Text>
         </TouchableOpacity>
+      </View>
       </View>
     </View>
   );
