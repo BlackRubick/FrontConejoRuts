@@ -66,6 +66,7 @@ const createChat = async (user1Email: string, user2Email: string) => {
       {users.map((user, index) => (
         currentUser && currentUser.email !== user.email && (
         <TouchableOpacity
+            key={index}
             onPress={() => startChat(user.email, user)}
             style={tw`h-12 flex justify-center items-center border rounded-xl mt-4 border-gray-500`}>
             <Text key={index} style={tw`text-[20px] text-white`}>{user.name}</Text>
