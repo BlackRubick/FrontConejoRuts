@@ -7,12 +7,9 @@ import {
   TouchableOpacity,
   Image,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
-import * as DocumentPicker from "expo-document-picker";
 import { Audio } from "expo-av";
 import tw from "../styles/tailwind";
 import Play from "../../assets/playIcon.svg";
-import { User, ChatScreenRouteProp } from "../models/User";
 import { StackScreenProps } from "@react-navigation/stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import Back from "../../assets/arrowBack.svg";
@@ -34,18 +31,9 @@ import {
 } from "firebase/storage";
 import { Video } from "expo-av";
 import SedArrow from "../../assets/SedArrow.svg";
+import { sendTextMessage, sendImageMessage, sendAudioMessage, sendVideoMessage } from '../utils/message';
 
 type ChatScreenProps = StackScreenProps<RootStackParamList, "Chat">;
-
-interface Message {
-  content: string;
-  type: "text" | "image" | "audio";
-  senderEmail: string;
-  receiverEmail: string;
-  participants: string[];
-  chatId: string;
-  timestamp: number;
-}
 
 const ChatScreen: React.FC<ChatScreenProps> = ({ route }) => {
   const videoRefs = useRef<Map<string, React.RefObject<Video>>>(new Map());
@@ -60,171 +48,20 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ route }) => {
   >([]);
   const [inputText, setInputText] = React.useState<string>("");
 
-  const handleSendTextMessage = async () => {
-    if (inputText.trim() !== "") {
-      await sendMessage(inputText, "text", userEmail, user.email);
-      setInputText("");
-    }
+  const handleSendTextMessage = (content: any) => {
+    sendTextMessage(content, userEmail, user.email, setMessages, messages, chatId);
   };
 
-  const uriToBlob = async (uri: string): Promise<Blob> => {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return blob;
+  const handleSendImage = (conten:any) => {
+    sendImageMessage(userEmail, user.email, setMessages, messages, chatId);
   };
 
-  const sendMessage = async (
-    content: string,
-    type: "text" | "image" | "audio" | "video",
-    senderEmail: string,
-    receiverEmail: string
-  ) => {
-    const db = getFirestore();
-    const messagesCollection = collection(db, "messages");
-
-    const newMessage = {
-      content,
-      type,
-      senderEmail,
-      receiverEmail,
-      participants: [senderEmail, receiverEmail],
-      chatId: chatId,
-      timestamp: Date.now(),
-    };
-
-    await addDoc(messagesCollection, newMessage);
+  const handleSendAudio = (content:any) => {
+    sendAudioMessage(userEmail, user.email, setMessages, messages, chatId);
   };
 
-  const loadMessages = () => {
-    const db = getFirestore();
-    const messagesCollection = collection(db, "messages");
-
-    const q = query(
-      messagesCollection,
-      where("participants", "array-contains", userEmail),
-      orderBy("timestamp", "asc")
-    );
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const loadedMessages: Message[] = [];
-      querySnapshot.forEach((doc) => {
-        loadedMessages.push(doc.data() as Message);
-      });
-      setMessages(loadedMessages);
-    });
-
-    return unsubscribe;
-  };
-
-  const handleSendImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync();
-    if (!result.canceled) {
-      const storage = getStorage();
-      const storageRef = ref(
-        storage,
-        "images/" + result.assets[0].uri.split("/").pop()
-      );
-
-      const imageBlob = await uriToBlob(result.assets[0].uri);
-
-      const uploadTask = uploadBytesResumable(storageRef, imageBlob, {
-        contentType: "image/jpeg",
-      });
-
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {},
-        (error) => {
-          console.error(error);
-        },
-        () => {
-          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-            console.log("File available at", downloadURL);
-            sendMessage(downloadURL, "image", userEmail, user.email);
-            setMessages([
-              ...messages,
-              { content: downloadURL, type: "image", sentByUser: true },
-            ]);
-          });
-        }
-      );
-    }
-  };
-
-  const handleSendAudio = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: "audio/*",
-      copyToCacheDirectory: true,
-    });
-    if (result) {
-      const storage = getStorage();
-      const uri = result.assets[0].uri;
-      const storageRef = ref(storage, "audios/" + uri.split("/").pop());
-
-      // Leer el archivo en un Blob
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      const uploadTask = uploadBytesResumable(storageRef, blob, {
-        contentType: "audio/mpeg",
-      });
-
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {},
-        (error) => {
-          console.error(error);
-        },
-        () => {
-          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-            console.log("File available at", downloadURL);
-            sendMessage(downloadURL, "audio", userEmail, user.email);
-            setMessages([
-              ...messages,
-              { content: downloadURL, type: "audio", sentByUser: true },
-            ]);
-          });
-        }
-      );
-    }
-  };
-
-  const handleSendVideo = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-    });
-
-    if (!result.canceled) {
-      const storage = getStorage();
-      const storageRef = ref(
-        storage,
-        "videos/" + result.assets[0].uri.split("/").pop()
-      );
-
-      const videoBlob = await uriToBlob(result.assets[0].uri);
-
-      const uploadTask = uploadBytesResumable(storageRef, videoBlob, {
-        contentType: "video/mp4",
-      });
-
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {},
-        (error) => {
-          console.error(error);
-        },
-        () => {
-          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-            console.log("File available at", downloadURL);
-            sendMessage(downloadURL, "video", userEmail, user.email);
-            setMessages([
-              ...messages,
-              { content: downloadURL, type: "video", sentByUser: true },
-            ]);
-          });
-        }
-      );
-    }
+  const handleSendVideo = (content:any) => {
+    sendVideoMessage(userEmail, user.email, setMessages, messages, chatId);
   };
 
   const playAudio = async (uri: string | null) => {
