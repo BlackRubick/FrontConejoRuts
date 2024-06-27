@@ -7,6 +7,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import MapView, { Polyline, Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import RNPickerSelect from 'react-native-picker-select';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, "Home">;
 
@@ -16,6 +17,8 @@ type Props = {
 
 const routes = [
   { id: 1, title: "Ruta 1", path: [{ latitude: 16.7521, longitude: -93.1169 }, { latitude: 16.7597, longitude: -93.1123 }] },
+  { id: 2, title: "Ruta 2", path: [{ latitude: 16.7521, longitude: -93.1169 }, { latitude: 16.7597, longitude: -93.1123 }] },
+  // Agrega más rutas según sea necesario
 ];
 
 const Home: React.FC<Props> = ({ navigation }) => {
@@ -24,6 +27,8 @@ const Home: React.FC<Props> = ({ navigation }) => {
   const [destinationModalVisible, setDestinationModalVisible] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [destinationText, setDestinationText] = useState("");
+  const [selectedRoute, setSelectedRoute] = useState<string | null>(null); // Estado para la ruta seleccionada
+  const [filteredRoutes, setFilteredRoutes] = useState<string[]>([]); // Estado para las rutas filtradas
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [region, setRegion] = useState<Region>({
     latitude: 16.7521,
@@ -92,6 +97,11 @@ const Home: React.FC<Props> = ({ navigation }) => {
     Keyboard.dismiss();
   };
 
+  const navigateToLogin = () => {
+    navigation.navigate('Login');
+    setMenuVisible(false); // Para cerrar el menú si estuviera abierto al navegar
+  };
+
   const rotateAnimation = useAnimatedStyle(() => {
     return {
       transform: [{ rotate: `${rotateValue.value}deg` }],
@@ -105,11 +115,32 @@ const Home: React.FC<Props> = ({ navigation }) => {
     };
   });
 
+  // Filtrar rutas según el texto de búsqueda
+  useEffect(() => {
+    if (searchText === "") {
+      setFilteredRoutes(routes.map(route => route.title));
+    } else {
+      const filtered = routes.filter(route => route.title.toLowerCase().includes(searchText.toLowerCase()));
+      setFilteredRoutes(filtered.map(route => route.title));
+    }
+  }, [searchText]);
+
+  // Función para seleccionar una ruta del selector
+  const handleRouteSelect = (routeTitle: string) => {
+    setSelectedRoute(routeTitle);
+    setSearchModalVisible(false); // Cerrar modal después de seleccionar
+  };
+
   return (
     <LinearGradient colors={['#5E9CFA', '#8A2BE2']} style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={toggleMenu}></TouchableOpacity>
+        <TouchableOpacity onPress={toggleMenu}>
+          <FontAwesome name="bars" size={24} color="white" />
+        </TouchableOpacity>
         <Text style={styles.headerText}>ConejoRuts</Text>
+        <TouchableOpacity onPress={navigateToLogin}>
+          <FontAwesome name="user" size={24} color="white" />
+        </TouchableOpacity>
       </View>
 
       <Modal
@@ -121,14 +152,14 @@ const Home: React.FC<Props> = ({ navigation }) => {
         <TouchableWithoutFeedback onPress={toggleMenu}>
           <View style={styles.modalOverlay}>
             <View style={styles.menu}>
-              <TouchableOpacity style={styles.menuItem} onPress={() => { toggleMenu(); navigation.navigate("Home"); }}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { toggleMenu();toggleDestinationModal(); }}>
                 <Text style={styles.menuItemText}>Comparar Rutas</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem} onPress={() => { toggleMenu(); toggleDestinationModal(); }}>
                 <Text style={styles.menuItemText}>Buscar Destino</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem} onPress={() => { toggleSearchModal(); }}>
-                <Text style={styles.menuItemText}>Ver Ruta </Text>
+                <Text style={styles.menuItemText}>Ver Ruta</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -182,13 +213,28 @@ const Home: React.FC<Props> = ({ navigation }) => {
         <TouchableWithoutFeedback onPress={() => setSearchModalVisible(false)}>
           <View style={styles.searchModalOverlay}>
             <View style={styles.searchModal}>
+              {/* Selector de rutas */}
+              <RNPickerSelect
+                placeholder={{ label: 'Selecciona una ruta', value: null }}
+                items={filteredRoutes.map(routeTitle => ({ label: routeTitle, value: routeTitle }))}
+                onValueChange={(value) => handleRouteSelect(value as string)}
+                style={pickerSelectStyles}
+                value={selectedRoute}
+              />
+
+              {/* Campo de texto para búsqueda */}
               <TextInput
                 style={styles.searchInput}
-                placeholder="Ruta 33"
+                placeholder="Buscar ruta"
                 onChangeText={(text) => setSearchText(text)}
                 value={searchText}
                 onSubmitEditing={handleSearchSubmit}
               />
+
+              {/* Botón de búsqueda */}
+              <TouchableOpacity style={styles.searchButton} onPress={handleSearchSubmit}>
+                <Text style={styles.searchButtonText}>Buscar</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </TouchableWithoutFeedback>
@@ -210,13 +256,41 @@ const Home: React.FC<Props> = ({ navigation }) => {
                 value={destinationText}
                 onSubmitEditing={handleDestinationSubmit}
               />
+
+              
             </View>
-          </View>
+            
+                      </View>
         </TouchableWithoutFeedback>
       </Modal>
     </LinearGradient>
   );
 };
+
+const pickerSelectStyles = StyleSheet.create({
+  inputIOS: {
+    fontSize: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: 'gray',
+    borderRadius: 8,
+    color: 'black',
+    paddingRight: 30,
+    marginBottom: 10,
+  },
+  inputAndroid: {
+    fontSize: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'gray',
+    borderRadius: 8,
+    color: 'black',
+    paddingRight: 30,
+    marginBottom: 10,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -235,7 +309,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
     textAlign: "center",
-    right: 120,
   },
   map: {
     flex: 1,
@@ -259,12 +332,12 @@ const styles = StyleSheet.create({
   },
   searchModalOverlay: {
     flex: 1,
-    backgroundColor: 'transparent', 
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
   },
   searchModal: {
-    backgroundColor: 'transparent', 
+    backgroundColor: 'transparent',
     padding: 20,
     borderRadius: 8,
     width: 250,
@@ -294,6 +367,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "K2D",
     backgroundColor: 'white',
+  },
+  searchButton: {
+    backgroundColor: '#008001',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  searchButtonText: {
+    fontFamily: "K2D",
+    fontSize: 18,
+    color: 'white',
   },
 });
 
