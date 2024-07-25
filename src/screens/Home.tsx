@@ -1,46 +1,55 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, TouchableWithoutFeedback, Keyboard, Alert } from "react-native";
-import { StackNavigationProp } from "@react-navigation/stack";
-import { RootStackParamList } from "../navigation/AppNavigator";
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Alert, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome } from '@expo/vector-icons';
-import MapView, { Polyline, Marker, Region } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import RNPickerSelect from 'react-native-picker-select';
+import axios from 'axios';
 
-type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, "Home">;
-
-type Props = {
-  navigation: HomeScreenNavigationProp;
+type Region = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
 };
 
-const routes = [
-  { id: 1, title: "Ruta 1", path: [{ latitude: 16.7521, longitude: -93.1169 }, { latitude: 16.7597, longitude: -93.1123 }] },
-  { id: 2, title: "Ruta 2", path: [{ latitude: 16.7521, longitude: -93.1169 }, { latitude: 16.7597, longitude: -93.1123 }] },
-  // Agrega más rutas según sea necesario
-];
+type PathCoordinate = {
+  latitude: number;
+  longitude: number;
+};
 
-const Home: React.FC<Props> = ({ navigation }) => {
+type RouteData = {
+  id: number;
+  title: string;
+  path: PathCoordinate[];
+};
+
+type HomeProps = {
+  navigation: any; // Ajusta según tu configuración de navegación
+};
+
+const Home: React.FC<HomeProps> = ({ navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const [compareModalVisible, setCompareModalVisible] = useState(false);
+  const [selectedRouteName, setSelectedRouteName] = useState<string | null>(null);
   const [destinationModalVisible, setDestinationModalVisible] = useState(false);
-  const [searchText, setSearchText] = useState("");
-  const [destinationText, setDestinationText] = useState("");
-  const [selectedRoute, setSelectedRoute] = useState<string | null>(null); // Estado para la ruta seleccionada
-  const [filteredRoutes, setFilteredRoutes] = useState<string[]>([]); // Estado para las rutas filtradas
+  const [saveRouteModalVisible, setSaveRouteModalVisible] = useState(false);
+  const [deleteRouteModalVisible, setDeleteRouteModalVisible] = useState<boolean>(false);
+  const [saveRoute, setSaveRoute] = useState<RouteData[]>([]);
+  const [currentRoute, setCurrentRoute] = useState<PathCoordinate[]>([]);
+  const [routeName, setRouteName] = useState<string>('');
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [region, setRegion] = useState<Region>({
-    latitude: 16.7521,
-    longitude: -93.1169,
+    latitude: 0,
+    longitude: 0,
     latitudeDelta: 0.05,
     longitudeDelta: 0.05,
   });
-
-  const rotateValue = useSharedValue(0);
-  const scale = useSharedValue(0);
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(0);
+  const [selectedRoute, setSelectedRoute] = useState<RouteData | null>(null);
+  const [route1, setRoute1] = useState<RouteData | null>(null);
+  const [route2, setRoute2] = useState<RouteData | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -51,10 +60,8 @@ const Home: React.FC<Props> = ({ navigation }) => {
       }
 
       let loc = await Location.getCurrentPositionAsync({});
-      console.log('Current Location:', loc);
-
+      setLocation(loc);
       if (loc.coords.latitude && loc.coords.longitude) {
-        setLocation(loc);
         setRegion({
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
@@ -65,29 +72,35 @@ const Home: React.FC<Props> = ({ navigation }) => {
     })();
   }, []);
 
-  const toggleMenu = () => {
-    setMenuVisible(!menuVisible);
-  };
+  useEffect(() => {
+    axios.get('http://98.80.84.16:8000/routes')
+      .then(response => setSaveRoute(response.data))
+      .catch(error => console.error('Error fetching routes:', error));
+  }, []);
 
-  const togglePlusMenu = () => {
-    setMenuVisible(!menuVisible);
-    rotateValue.value = withTiming(menuVisible ? 0 : 45, { duration: 300 });
-    scale.value = withSpring(menuVisible ? 0 : 1);
-    opacity.value = withTiming(menuVisible ? 0 : 1, { duration: 300 });
-    translateY.value = withSpring(menuVisible ? 50 : 0);
-  };
-
+  const toggleMenu = () => setMenuVisible(!menuVisible);
   const toggleSearchModal = () => {
     setSearchModalVisible(!searchModalVisible);
     setMenuVisible(false);
   };
-
+  const toggleCompareModal = () => {
+    setCompareModalVisible(!compareModalVisible);
+    setMenuVisible(false);
+  };
   const toggleDestinationModal = () => {
     setDestinationModalVisible(!destinationModalVisible);
     setMenuVisible(false);
   };
 
   const handleSearchSubmit = () => {
+    if (selectedRouteName) {
+      const route = saveRoute.find(r => r.title === selectedRouteName);
+      if (route) {
+        setSelectedRoute(route);
+      } else {
+        Alert.alert("Error", "Ruta no encontrada.");
+      }
+    }
     setSearchModalVisible(false);
     Keyboard.dismiss();
   };
@@ -99,36 +112,89 @@ const Home: React.FC<Props> = ({ navigation }) => {
 
   const navigateToLogin = () => {
     navigation.navigate('Login');
-    setMenuVisible(false); // Para cerrar el menú si estuviera abierto al navegar
+    setMenuVisible(false);
   };
 
-  const rotateAnimation = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotate: `${rotateValue.value}deg` }],
-    };
-  });
+  const handleAddRoute = () => {
+    setCurrentRoute([]);
+    Alert.alert("Agregar Ruta", "Toca el mapa para agregar puntos a la ruta.");
+    setMenuVisible(false);
+  };
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }, { translateY: translateY.value }],
-      opacity: opacity.value,
-    };
-  });
-
-  // Filtrar rutas según el texto de búsqueda
-  useEffect(() => {
-    if (searchText === "") {
-      setFilteredRoutes(routes.map(route => route.title));
-    } else {
-      const filtered = routes.filter(route => route.title.toLowerCase().includes(searchText.toLowerCase()));
-      setFilteredRoutes(filtered.map(route => route.title));
+  const handleSaveRoute = () => {
+    if (currentRoute.length === 0) {
+      Alert.alert("Error", "No hay puntos en la ruta para guardar.");
+      return;
     }
-  }, [searchText]);
 
-  // Función para seleccionar una ruta del selector
-  const handleRouteSelect = (routeTitle: string) => {
-    setSelectedRoute(routeTitle);
-    setSearchModalVisible(false); // Cerrar modal después de seleccionar
+    if (routeName.trim() === '') {
+      Alert.alert("Error", "Por favor, ingresa un nombre para la ruta.");
+      return;
+    }
+
+    const newRoute = {
+      title: routeName,
+      path: currentRoute,
+    };
+
+    fetch('http://98.80.84.16:8000/routes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(newRoute),
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Error al guardar la ruta');
+        }
+        return response.json();
+      })
+      .then(data => {
+        setCurrentRoute([]);
+        setRouteName('');
+        setSaveRoute(prevRoutes => [...prevRoutes, { id: data.id, title: routeName, path: currentRoute }]);
+        Alert.alert("Ruta Guardada", `La ruta "${routeName}" se ha guardado correctamente.`);
+        setSaveRouteModalVisible(false);
+      })
+      .catch(error => {
+        Alert.alert("Error", "Hubo un problema al guardar la ruta. Verifica la conexión y vuelve a intentarlo.");
+        console.error(error);
+      });
+  };
+
+  const handleDeleteRoute = () => {
+    if (selectedRouteName === null) {
+      Alert.alert("Error", "No se ha seleccionado ninguna ruta para borrar.");
+      return;
+    }
+
+    fetch(`http://98.80.84.16:8000/routes/${selectedRouteName}`, {
+      method: 'DELETE',
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Error al borrar la ruta');
+        }
+        setSaveRoute(prevRoutes => prevRoutes.filter(route => route.title !== selectedRouteName));
+        Alert.alert("Ruta Eliminada", "La ruta se ha eliminado correctamente.");
+        setSelectedRouteName(null);
+        setDeleteRouteModalVisible(false);
+      })
+      .catch(error => {
+        Alert.alert("Error", "Hubo un problema al eliminar la ruta. Verifica la conexión y vuelve a intentarlo.");
+        console.error(error);
+      });
+  };
+
+  const handleCompareSubmit = () => {
+    if (!route1 || !route2) {
+      Alert.alert("Error", "Por favor selecciona dos rutas para comparar.");
+      return;
+    }
+
+    setCompareModalVisible(false);
+    Keyboard.dismiss();
   };
 
   return (
@@ -152,14 +218,23 @@ const Home: React.FC<Props> = ({ navigation }) => {
         <TouchableWithoutFeedback onPress={toggleMenu}>
           <View style={styles.modalOverlay}>
             <View style={styles.menu}>
-              <TouchableOpacity style={styles.menuItem} onPress={() => { toggleMenu();toggleDestinationModal(); }}>
+              <TouchableOpacity style={styles.menuItem} onPress={toggleCompareModal}>
                 <Text style={styles.menuItemText}>Comparar Rutas</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem} onPress={() => { toggleMenu(); toggleDestinationModal(); }}>
+              <TouchableOpacity style={styles.menuItem} onPress={toggleDestinationModal}>
                 <Text style={styles.menuItemText}>Buscar Destino</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem} onPress={() => { toggleSearchModal(); }}>
+              <TouchableOpacity style={styles.menuItem} onPress={toggleSearchModal}>
                 <Text style={styles.menuItemText}>Ver Ruta</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={handleAddRoute}>
+                <Text style={styles.menuItemText}>Agregar Rutas</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => setSaveRouteModalVisible(true)}>
+                <Text style={styles.menuItemText}>Guardar Ruta</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => setDeleteRouteModalVisible(true)}>
+                <Text style={styles.menuItemText}>Borrar Ruta</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -172,11 +247,11 @@ const Home: React.FC<Props> = ({ navigation }) => {
         onRegionChangeComplete={(newRegion) => setRegion(newRegion)}
         zoomEnabled={true}
         zoomControlEnabled={true}
-        scrollEnabled={true}
-        pitchEnabled={true}
-        rotateEnabled={true}
-        showsUserLocation={true}
-        showsMyLocationButton={true}
+        onPress={(e) => {
+          if (currentRoute) {
+            setCurrentRoute([...currentRoute, e.nativeEvent.coordinate]);
+          }
+        }}
       >
         {location && (
           <Marker
@@ -184,56 +259,91 @@ const Home: React.FC<Props> = ({ navigation }) => {
               latitude: location.coords.latitude,
               longitude: location.coords.longitude,
             }}
-            title="Mi Ubicación"
-            description="Aquí estoy"
+            title="You are here"
+            description="This is your current location"
           />
         )}
-        {routes.map(route => (
-          <Polyline
-            key={route.id}
-            coordinates={route.path}
-            strokeColor="#8A2BE2"
-            strokeWidth={6}
-          />
-        ))}
-      </MapView>
 
-      <TouchableOpacity style={styles.plusButton} onPress={togglePlusMenu}>
-        <Animated.View style={rotateAnimation}>
-          <FontAwesome name="plus" size={24} color="white" />
-        </Animated.View>
-      </TouchableOpacity>
+        {currentRoute.length > 0 && (
+          <Polyline
+            coordinates={currentRoute}
+            strokeColor="#000"
+            strokeWidth={3}
+          />
+        )}
+
+        {selectedRoute && (
+          <Polyline
+            coordinates={selectedRoute.path}
+            strokeColor="#00f"
+            strokeWidth={3}
+          />
+        )}
+
+        {route1 && (
+          <Polyline
+            coordinates={route1.path}
+            strokeColor="#ff0"
+            strokeWidth={3}
+          />
+        )}
+
+        {route2 && (
+          <Polyline
+            coordinates={route2.path}
+            strokeColor="#f00"
+            strokeWidth={3}
+          />
+        )}
+      </MapView>
 
       <Modal
         transparent={true}
         visible={searchModalVisible}
         animationType="fade"
-        onRequestClose={() => setSearchModalVisible(false)}
+        onRequestClose={toggleSearchModal}
       >
-        <TouchableWithoutFeedback onPress={() => setSearchModalVisible(false)}>
-          <View style={styles.searchModalOverlay}>
-            <View style={styles.searchModal}>
-              {/* Selector de rutas */}
+        <TouchableWithoutFeedback onPress={toggleSearchModal}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Ver Ruta</Text>
               <RNPickerSelect
-                placeholder={{ label: 'Selecciona una ruta', value: null }}
-                items={filteredRoutes.map(routeTitle => ({ label: routeTitle, value: routeTitle }))}
-                onValueChange={(value) => handleRouteSelect(value as string)}
-                style={pickerSelectStyles}
-                value={selectedRoute}
+                onValueChange={(value) => setSelectedRouteName(value)}
+                items={saveRoute.map(route => ({ label: route.title, value: route.title }))}
+                placeholder={{ label: "Selecciona una ruta...", value: null }}
               />
+              <TouchableOpacity style={styles.button} onPress={handleSearchSubmit}>
+                <Text style={styles.buttonText}>Buscar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
-              {/* Campo de texto para búsqueda */}
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Buscar ruta"
-                onChangeText={(text) => setSearchText(text)}
-                value={searchText}
-                onSubmitEditing={handleSearchSubmit}
+      <Modal
+        transparent={true}
+        visible={compareModalVisible}
+        animationType="fade"
+        onRequestClose={toggleCompareModal}
+      >
+        <TouchableWithoutFeedback onPress={toggleCompareModal}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Comparar Rutas</Text>
+              <Text>Ruta 1:</Text>
+              <RNPickerSelect
+                onValueChange={(value) => setRoute1(saveRoute.find(route => route.title === value) || null)}
+                items={saveRoute.map(route => ({ label: route.title, value: route.title }))}
+                placeholder={{ label: "Selecciona la primera ruta...", value: null }}
               />
-
-              {/* Botón de búsqueda */}
-              <TouchableOpacity style={styles.searchButton} onPress={handleSearchSubmit}>
-                <Text style={styles.searchButtonText}>Buscar</Text>
+              <Text>Ruta 2:</Text>
+              <RNPickerSelect
+                onValueChange={(value) => setRoute2(saveRoute.find(route => route.title === value) || null)}
+                items={saveRoute.map(route => ({ label: route.title, value: route.title }))}
+                placeholder={{ label: "Selecciona la segunda ruta...", value: null }}
+              />
+              <TouchableOpacity style={styles.button} onPress={handleCompareSubmit}>
+                <Text style={styles.buttonText}>Comparar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -244,85 +354,93 @@ const Home: React.FC<Props> = ({ navigation }) => {
         transparent={true}
         visible={destinationModalVisible}
         animationType="fade"
-        onRequestClose={() => setDestinationModalVisible(false)}
+        onRequestClose={toggleDestinationModal}
       >
-        <TouchableWithoutFeedback onPress={() => setDestinationModalVisible(false)}>
-          <View style={styles.searchModalOverlay}>
-            <View style={styles.searchModal}>
+        <TouchableWithoutFeedback onPress={toggleDestinationModal}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Buscar Destino</Text>
               <TextInput
-                style={styles.searchInput}
-                placeholder="Buscar destino"
-                onChangeText={(text) => setDestinationText(text)}
-                value={destinationText}
-                onSubmitEditing={handleDestinationSubmit}
+                style={styles.input}
+                placeholder="Ingresa tu destino"
+                onChangeText={text => setSelectedRouteName(text)}
+                value={selectedRouteName || ''}
               />
-
-              
+              <TouchableOpacity style={styles.button} onPress={handleDestinationSubmit}>
+                <Text style={styles.buttonText}>Buscar</Text>
+              </TouchableOpacity>
             </View>
-            
-                      </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        transparent={true}
+        visible={saveRouteModalVisible}
+        animationType="fade"
+        onRequestClose={() => setSaveRouteModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setSaveRouteModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Guardar Ruta</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Nombre de la ruta"
+                onChangeText={text => setRouteName(text)}
+                value={routeName}
+              />
+              <TouchableOpacity style={styles.button} onPress={handleSaveRoute}>
+                <Text style={styles.buttonText}>Guardar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => setSaveRouteModalVisible(false)}>
+                <Text style={styles.buttonText}>Actualizar Ruta</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        transparent={true}
+        visible={deleteRouteModalVisible}
+        animationType="fade"
+        onRequestClose={() => setDeleteRouteModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setDeleteRouteModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Borrar Ruta</Text>
+              <RNPickerSelect
+                onValueChange={(value) => setSelectedRouteName(value)}
+                items={saveRoute.map(route => ({ label: route.title, value: route.title }))}
+                placeholder={{ label: "Selecciona una ruta...", value: null }}
+              />
+              <TouchableOpacity style={styles.button} onPress={handleDeleteRoute}>
+                <Text style={styles.buttonText}>Borrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </TouchableWithoutFeedback>
       </Modal>
     </LinearGradient>
   );
 };
 
-const pickerSelectStyles = StyleSheet.create({
-  inputIOS: {
-    fontSize: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: 'gray',
-    borderRadius: 8,
-    color: 'black',
-    paddingRight: 30,
-    marginBottom: 10,
-  },
-  inputAndroid: {
-    fontSize: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: 'gray',
-    borderRadius: 8,
-    color: 'black',
-    paddingRight: 30,
-    marginBottom: 10,
-  },
-});
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    backgroundColor: '#487DE0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 40,
   },
   headerText: {
-    fontFamily: "K2D",
-    color: "white",
-    fontSize: 24,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  map: {
-    flex: 1,
-  },
-  plusButton: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    backgroundColor: '#008001',
-    borderRadius: 30,
-    width: 60,
-    height: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
   },
   modalOverlay: {
     flex: 1,
@@ -330,55 +448,57 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  searchModalOverlay: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
+  modalContainer: {
+    width: 300,
+    padding: 20,
+    backgroundColor: 'white',
+    borderRadius: 10,
     alignItems: 'center',
   },
-  searchModal: {
-    backgroundColor: 'transparent',
-    padding: 20,
-    borderRadius: 8,
-    width: 250,
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  input: {
+    width: '100%',
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'gray',
+    borderRadius: 5,
+    marginBottom: 10,
+  },
+  button: {
+    backgroundColor: '#5E9CFA',
+    padding: 10,
+    borderRadius: 5,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
   menu: {
     backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 8,
-    marginTop: 50,
-    marginLeft: 10,
+    width: 200,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
   },
   menuItem: {
-    paddingVertical: 10,
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'gray',
+    width: '100%',
     alignItems: 'center',
   },
   menuItemText: {
-    fontFamily: "K2D",
-    fontSize: 18,
+    fontSize: 16,
     color: 'black',
   },
-  searchInput: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 10,
-    marginBottom: 10,
-    borderRadius: 8,
-    fontSize: 16,
-    fontFamily: "K2D",
-    backgroundColor: 'white',
-  },
-  searchButton: {
-    backgroundColor: '#008001',
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  searchButtonText: {
-    fontFamily: "K2D",
-    fontSize: 18,
-    color: 'white',
+  map: {
+    flex: 1,
   },
 });
 

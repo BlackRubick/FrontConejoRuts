@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import axios from 'axios';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import * as Animatable from 'react-native-animatable';
-import { FontAwesome } from '@expo/vector-icons';
+import { useUser } from '../contexts/UserContext'; // Importa el hook de contexto de usuario
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -12,49 +12,61 @@ type Props = {
 };
 
 const Login: React.FC<Props> = ({ navigation }) => {
+  const { setUserName } = useUser(); // Usa el hook de contexto de usuario
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false); // Estado para alternar entre iniciar sesión y registrarse
-  const transportRef = useRef<Animatable.View>(null); // Ref para la animación del transporte
+  const [isLogin, setIsLogin] = useState(true); // Estado para alternar entre login y registro
+  const [fullName, setFullName] = useState(''); // Estado para el nombre completo en el registro
 
-  const handleToggleMode = () => {
-    // Cambia el modo entre iniciar sesión y registrarse
-    setIsRegistering(!isRegistering);
+  const apiUrl = 'http://98.80.84.16:8000';
+
+  const handleLogin = async () => {
+    try {
+      const response = await axios.post(`${apiUrl}/login`, {
+        email: email,
+        password: password,
+      });
+      Alert.alert('Inicio de sesión exitoso', 'Has iniciado sesión correctamente');
+
+      // Guarda el nombre del usuario en el contexto de usuario
+      setUserName(response.data.full_name); // Ajusta según la estructura de tu respuesta
+
+      navigation.navigate('Home'); // Navega a la pantalla 'Home'
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Ha ocurrido un error, por favor intenta de nuevo');
+    }
   };
 
-  const handleAction = () => {
-    if (isRegistering) {
-      // Lógica para registrar una nueva cuenta
-      console.log('Registrando cuenta con:');
-      console.log('Nombre Completo:', fullName);
-      console.log('Email:', email);
-      console.log('Password:', password);
-      // Aquí podrías agregar lógica adicional para manejar el registro de usuario
+  const handleRegister = async () => {
+    try {
+      const response = await axios.post(`${apiUrl}/register`, {
+        full_name: fullName,
+        email: email,
+        password: password,
+      });
+      Alert.alert('Registro exitoso', 'Te has registrado correctamente');
 
-      // Por ahora, solo navegará a la pantalla Home después del registro exitoso
-      navigation.replace('Home');
-    } else {
-      // Lógica para iniciar sesión
-      console.log('Iniciando sesión con:');
-      console.log('Email:', email);
-      console.log('Password:', password);
-      // Navega a la pantalla Home después del inicio de sesión exitoso
-      navigation.replace('Home');
+      // Guarda el nombre del usuario en el contexto de usuario
+      setUserName(response.data.full_name); // Ajusta según la estructura de tu respuesta
+
+      navigation.navigate('Home'); // Navega a la pantalla 'Home'
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Ha ocurrido un error, por favor intenta de nuevo');
     }
   };
 
   return (
     <View style={styles.container}>
-      <Animatable.View animation="slideInDown" duration={1500} style={styles.transport}>
-      </Animatable.View>
       <Text style={styles.headerText}>ConejoRuts</Text>
       <View style={styles.formContainer}>
-        <Text style={styles.title}>{isRegistering ? 'Registrarse' : 'Iniciar Sesión'}</Text>
-        {isRegistering && (
+        <Text style={styles.title}>{isLogin ? 'Iniciar Sesión' : 'Registrarse'}</Text>
+        {!isLogin && (
           <TextInput
             style={styles.input}
-            placeholder="Nombre Completo"
+            placeholder="Nombre completo"
             value={fullName}
             onChangeText={setFullName}
           />
@@ -74,12 +86,12 @@ const Login: React.FC<Props> = ({ navigation }) => {
           value={password}
           onChangeText={setPassword}
         />
-        <TouchableOpacity style={styles.button} onPress={handleAction}>
-          <Text style={styles.buttonText}>{isRegistering ? 'Registrarse' : 'Iniciar Sesión'}</Text>
+        <TouchableOpacity style={styles.button} onPress={isLogin ? handleLogin : handleRegister}>
+          <Text style={styles.buttonText}>{isLogin ? 'Iniciar Sesión' : 'Registrarse'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.toggleButton} onPress={handleToggleMode}>
+        <TouchableOpacity style={styles.toggleButton} onPress={() => setIsLogin(!isLogin)}>
           <Text style={styles.toggleButtonText}>
-            {isRegistering ? '¿Ya tienes una cuenta? Inicia sesión aquí' : '¿No tienes cuenta? Regístrate aquí'}
+            {isLogin ? '¿No tienes cuenta? Regístrate aquí' : '¿Ya tienes cuenta? Inicia sesión aquí'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -138,12 +150,6 @@ const styles = StyleSheet.create({
   toggleButtonText: {
     color: '#008001',
     fontSize: 16,
-  },
-  transport: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    zIndex: 10,
   },
 });
 
